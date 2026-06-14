@@ -1,0 +1,10 @@
+torch>=2.0
+torch_geometric
+networkx
+GraphRicciCurvature
+matplotlib
+seaborn
+scikit-learn
+pandas
+numpy
+POT
