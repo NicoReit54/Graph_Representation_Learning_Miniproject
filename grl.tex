@@ -1,0 +1,104 @@
+\documentclass[inlineanswers]{exam2024}
+%\documentclass[noanswers]{exam2023}
+
+\usepackage[utf8]{inputenc}
+\usepackage{hyperref,booktabs}
+\usepackage{amsmath, amsfonts,sansmath,bm, amsthm,MnSymbol}
+
+
+\begin{document}
+
+\paper{Graph Representation Learning}
+
+ %Please respect the notation from Table~\ref{tab:notation} in your answers whenever applicable:
+
+%\begin{table}[h!]
+%    \caption{Notation.}
+%    \label{tab:notation}
+%    \vspace{0.2cm}
+%     \centering
+%    \begin{tabular}{l l}
+%    \toprule
+%$\sigma$ & An element-wise non-linearity. \\
+%$t$ & Iteration, or layer $t$. \\
+%$d^{(t)}$ & The dimension of a vector at iteration $t$. \\
+%$d$ & The dimension of a vector, and an abbreviation for $d^{(0)}$. \\
+%$\bm{1}^d \in \mathbb{R}^d$ & A $d$-dimensional vector of all $1$'s.\\
+%$\mathbb{I}^d \subseteq \mathbb{R}^d$ & The set of $d$-dimensional one-hot vectors.\\
+%$\mathbb{B}$ & Boolean domain $\{0,1\}$. \\
+%$\bm{b}^{(t)}\in \mathbb{R}^d$ &A  bias vector.\\
+%$\bm{x}_u \in \mathbb{R}^{d}$ &The feature of a node $u \in V$. \\
+%$\bm{h}_u^{(t)} \in \mathbb{R}^{d^{(t)}}$ &The representation of a node $u \in V$ at layer $t$. \\
+%$\bm{z}_u=\bm{h}_u^{(T)} \in \mathbb{R}^{d^{(T)}}$ &The final representation of a node $u \in V$ after $T$ layers/iterations. \\
+%$\bm{W}_x^{(t)} \in \mathbb{R}^{d^{(t+1)} \times d^{(t)}}$ & Learnable parameter matrix at layer $t$. \\
+%\bottomrule
+%    \end{tabular}
+%\end{table}
+
+%\clearpage
+
+%\begin{question}[100]
+In this project, you are expected to investigate the properties of graph neural networks with a specific focus on their properties, including \emph{inductive bias}, \emph{information propagation}, \emph{expressive power}, and \emph{generalization}. 
+%
+The task is to develop and study a well-defined research problem based on certain desiderata of your choice pertaining to one (or more) of these properties and report your theoretical and/or empirical findings in a controlled experimental setup. 
+%A complete empirical study with strong conceptual motivation is fully sufficient; novel formal proofs are not required.
+The study can focus on one (or more) of these dimensions of your choice, including (but not limited to): 
+\begin{itemize}
+    \item Analyzing different choices of model components and their implications on the property of interest (e.g., \emph{how does a choice for a model component affect expressive power?}), 
+    \item Exploring model design space and deriving architectures in an application domain (e.g., \emph{how does a choice for a model affect its inductive bias on molecular graphs?}), 
+    \item Comparing two (or more) graph architectures with respect to a property, and analyzing their strengths or weaknesses (e.g., \emph{how  does one model generalize compared to another model?}),
+    \item Comparing properties of graph neural networks to other architectures (e.g., Tabular models, LLMs, etc.) in a specific setting (e.g., \emph{how does the inductive bias of tabular foundation model compare to a graph foundation model on simple graphs? What are the (dis)advantages?}),  
+    \item Proposing an extension (or simplification) of an existing graph neural network architecture, and studying its properties (e.g., \emph{how does the information flow in a newly proposed architecture and what are the (dis)advantages?}), 
+    \item Analyzing the properties of variations of graph neural networks on different types of input graphs (e.g., multi-relational, planar, directed graphs, temporal, random graphs) in a specific setting (e.g., \emph{do graph transformers with positional encodings allow for better information flow and inductive bias on simple graphs?}),
+    \item Identifying a limitation of existing architectures and quantifying this limitation both empirically and theoretically (e.g., \emph{what are the limitations of knowledge graph foundation models in terms of their expressive power?}).
+\end{itemize}
+
+\paragraph{Report}
+
+Please use the official \LaTeX\, template (available in TISS) to write your report. The report should not exceed \emph{five} pages using the margins and font size of the provided \LaTeX\ template, \emph{excluding} the page(s) for the references, and supplementary data (e.g., implementation details). The report should include a link to your anonymous code-base (i.e., a github repository\footnote{You can anonymize your github repository at: \url{https://anonymous.4open.science.}}).  
+%
+The structure of the report will have the form of a small workshop paper (see, e.g., the provided \LaTeX\ template as a reference). For example, the report can start with an introduction motivating the problem (1.\ Introduction). This can be followed with a section where the core methodology and the overall approach is reported (2.\ Methods). The main findings can be reported in a separate section (3.\ Results). The report can then conclude with a discussion on the limitations and future directions (4.\ Conclusions). You can introduce further sections or subsections as you see necessary or even modify existing sections. 
+
+As part of this report, you are expected to:
+
+\begin{part}
+State a \emph{small} research question related to the properties of graph neural networks and provide a clear motivation for the proposed study. \emph{(Example: How does model architecture A compare to model architecture B in terms of expressive power? Why is it important to answer this question?)}
+\end{part}
+
+\begin{part}
+Propose means to study the research question and give an outline of the overall approach, clearly identifying the goals of the chosen study. \emph{(Example: An experimental setup which aims to test a hypothesis through, e.g., a synthetic dataset or using existing datasets, as well as a theoretical justification for the study.)}
+\end{part}
+
+\begin{part}
+Clearly state your methodology, empirical setup, benchmarks, hyper-parameters, and the assumptions underpinning the study.
+\end{part}
+
+\begin{part}
+Report your empirical/theoretical/conceptual findings, identifying whether or not the results support the initial hypothesis. You should use visuals, figures, and tables to present your findings in a structured manner. 
+\end{part}
+
+\begin{part}
+Relate and compare the obtained results to the relevant literature and to the concepts from the course. 
+\end{part}
+
+\begin{part}
+Present a detailed discussion relating the results to the original motivation, as well as a critical perspective regarding the study.
+\end{part}
+
+\begin{part}
+Provide an outlook stating any additional studies that need to be conducted to reach to more conclusive statements.
+\end{part}
+
+
+\paragraph{Assessment criteria}
+The study will be assessed based on the following criteria: (i)~motivation, clarity, and presentation (15 marks), 
+(ii)~coherence and depth of the study (15 marks), 
+(iii)~originality and novelty (e.g., in the problem setup, or in the approach, or in the results) (10 marks), 
+(iv)~the presence of a balanced critical self-evaluation (8 marks),
+(v)~relations to the concepts discussed throughout the course (6 marks), (vi)~scholarship, i.e., its framing in the existing literature (6 marks).   
+Please ensure that the computational resources are used in a balanced and well-justified manner: \emph{The study is not evaluated according to the number of experiments, benchmarks, or datasets, but according to its merits in accordance with the outlined criteria}. Strong submissions typically focus on one clearly defined property or hypothesis in a carefully scoped setting. Studies with well-motivated hypotheses and carefully conducted analyses will be rewarded even when the results are negative. %A complete empirical study with strong conceptual motivation is fully sufficient; novel formal proofs are not required.
+
+\hfill(60 marks)
+%\end{question}
+
+\end{document}
