@@ -47,44 +47,24 @@ def make_sbm_graph(
 
 
 def make_ring_graph(
-    n_nodes: int = 64,
+    n_nodes: int = 32,
     feature_dim: int = 8,
-    target_distance: int = 8,
     seed: int = 42,
 ) -> Data:
-    """Ring graph — designed to trigger over-squashing.
+    """Ring graph — used for curvature visualization only.
 
-    Node v has label = feature of the node exactly `target_distance` hops away.
-    The minimum path from any node to its target is exactly target_distance,
-    forcing information to travel through a bottleneck.
-
-    target_distance controls difficulty: larger d = worse squashing.
+    Features and labels are random; this graph is NOT used for classification
+    experiments. Its uniform negative curvature (alpha=0) makes it a clean
+    illustration of SDRF rewiring.
     """
     rng = np.random.default_rng(seed)
-    assert target_distance < n_nodes // 2, "target_distance must be < n_nodes/2"
-
     G = nx.cycle_graph(n_nodes)
-
-    # binary features: node i has feature class = i % 2 (simple distinguishing signal)
-    # actual label of node v = feature class of node (v + target_distance) % n_nodes
-    raw_labels = torch.tensor([i % 2 for i in range(n_nodes)], dtype=torch.long)
-    y = torch.tensor(
-        [(i + target_distance) % 2 for i in range(n_nodes)], dtype=torch.long
-    )
-
-    # one-hot features from raw_labels
-    x = torch.zeros(n_nodes, feature_dim)
-    for i in range(n_nodes):
-        x[i, raw_labels[i].item()] = 1.0
-    # add small noise
-    x += torch.tensor(rng.standard_normal((n_nodes, feature_dim)) * 0.1,
-                      dtype=torch.float)
-
+    x = torch.tensor(rng.standard_normal((n_nodes, feature_dim)) * 0.1, dtype=torch.float)
+    y = torch.tensor([i % 2 for i in range(n_nodes)], dtype=torch.long)
     data = from_networkx(G)
     data.x = x
     data.y = y
     data.num_classes = 2
-    data.target_distance = target_distance
     return data
 
 
