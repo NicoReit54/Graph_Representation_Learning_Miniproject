@@ -30,26 +30,14 @@ from GraphRicciCurvature.OllivierRicci import OllivierRicci
 
 payload = json.loads(sys.argv[1])
 task    = payload["task"]
-nodes   = payload["nodes"]
-edges   = payload["edges"]     # list of [u, v]
 
-G = nx.Graph()
-G.add_nodes_from(nodes)
-G.add_edges_from(edges)
+def _build_graph(nodes, edges):
+    G = nx.Graph()
+    G.add_nodes_from(nodes)
+    G.add_edges_from(edges)
+    return G
 
-if task == "curvature":
-    orc = OllivierRicci(G, alpha=0.0, verbose="ERROR")
-    orc.compute_ricci_curvature()
-    result = {str(u) + "," + str(v): d.get("ricciCurvature", 0.0)
-              for u, v, d in orc.G.edges(data=True)}
-    print(json.dumps(result))
-
-elif task == "rewire":
-    n_iter  = payload["n_iter"]
-    tau     = payload["tau"]
-    add_e   = payload["add_edges"]
-    rm_e    = payload["remove_edges"]
-
+def _rewire_one(G, n_iter, tau, add_e, rm_e):
     for _ in range(n_iter):
         orc = OllivierRicci(G, alpha=0.0, verbose="ERROR")
         orc.compute_ricci_curvature()
@@ -57,7 +45,6 @@ elif task == "rewire":
         sorted_edges = sorted(G_cur.edges(data=True),
                               key=lambda e: e[2].get("ricciCurvature", 0.0))
         made_change = False
-
         if add_e and sorted_edges:
             u, v, d = sorted_edges[0]
             if d.get("ricciCurvature", 0.0) < tau:
@@ -69,18 +56,43 @@ elif task == "rewire":
                     a, b = min(cands, key=lambda ab: G.degree(ab[0]) + G.degree(ab[1]))
                     G.add_edge(a, b)
                     made_change = True
-
         if rm_e and sorted_edges:
             u, v, d = sorted_edges[-1]
             if d.get("ricciCurvature", 0.0) > -tau and G.degree(u) > 1 and G.degree(v) > 1:
                 G.remove_edge(u, v)
                 made_change = True
-
         if not made_change:
             break
+    return list(G.edges())
 
-    result = list(G.edges())
+if task == "curvature":
+    nodes   = payload["nodes"]
+    edges   = payload["edges"]
+    G = _build_graph(nodes, edges)
+    orc = OllivierRicci(G, alpha=0.0, verbose="ERROR")
+    orc.compute_ricci_curvature()
+    result = {str(u) + "," + str(v): d.get("ricciCurvature", 0.0)
+              for u, v, d in orc.G.edges(data=True)}
     print(json.dumps(result))
+
+elif task == "rewire":
+    nodes   = payload["nodes"]
+    edges   = payload["edges"]
+    G = _build_graph(nodes, edges)
+    result = _rewire_one(G, payload["n_iter"], payload["tau"],
+                         payload["add_edges"], payload["remove_edges"])
+    print(json.dumps(result))
+
+elif task == "rewire_batch":
+    # Process multiple graphs in one subprocess to amortize import overhead.
+    # payload["graphs"] = list of {"nodes": [...], "edges": [...]}
+    results = []
+    for g_spec in payload["graphs"]:
+        G = _build_graph(g_spec["nodes"], g_spec["edges"])
+        new_edges = _rewire_one(G, payload["n_iter"], payload["tau"],
+                                payload["add_edges"], payload["remove_edges"])
+        results.append(new_edges)
+    print(json.dumps(results))
 """
 
 
@@ -146,6 +158,50 @@ def sdrf_rewire(
         if hasattr(data, attr):
             setattr(new_data, attr, getattr(data, attr))
     return new_data
+
+
+def sdrf_rewire_batch(
+    data_list: list,
+    n_iterations: int = 20,
+    tau: float = 0.0,
+    add_edges: bool = True,
+    remove_edges: bool = False,
+) -> list:
+    """Rewire multiple graphs in a single subprocess call.
+
+    Pays the GraphRicciCurvature import overhead once instead of once per graph.
+    Returns a list of new Data objects in the same order as data_list.
+    """
+    graphs_payload = []
+    for data in data_list:
+        G = to_networkx(data, to_undirected=True)
+        graphs_payload.append({
+            "nodes": list(G.nodes()),
+            "edges": [list(e) for e in G.edges()],
+        })
+    payload = {
+        "task": "rewire_batch",
+        "graphs": graphs_payload,
+        "n_iter": n_iterations,
+        "tau": tau,
+        "add_edges": add_edges,
+        "remove_edges": remove_edges,
+    }
+    all_edges = _call_worker(payload)   # list of lists of [u, v]
+
+    results = []
+    for data, new_edges in zip(data_list, all_edges):
+        src = [e[0] for e in new_edges] + [e[1] for e in new_edges]
+        dst = [e[1] for e in new_edges] + [e[0] for e in new_edges]
+        edge_index = torch.tensor([src, dst], dtype=torch.long)
+        new_data = Data(x=data.x, edge_index=edge_index, y=data.y,
+                        num_nodes=data.num_nodes)
+        for attr in ["train_mask", "val_mask", "test_mask", "num_classes",
+                     "target_distance", "clique_size", "bridge_length", "target_node"]:
+            if hasattr(data, attr):
+                setattr(new_data, attr, getattr(data, attr))
+        results.append(new_data)
+    return results
 
 
 def curvature_stats(data: Data) -> dict:

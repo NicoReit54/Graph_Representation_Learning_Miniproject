@@ -1,18 +1,22 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GCNConv, global_mean_pool
 
 
 class GCN(nn.Module):
-    """Standard GCN baseline — no skip connections."""
+    """Standard GCN — supports both node classification and graph classification.
+
+    Set pool=True for graph-level tasks (adds global mean pooling before classifier).
+    """
 
     def __init__(self, input_dim: int, hid_dim: int, n_classes: int,
-                 n_layers: int, dropout: float = 0.3):
+                 n_layers: int, dropout: float = 0.3, pool: bool = False):
         super().__init__()
         self.n_layers = n_layers
-        self.dropout = dropout
-        self.layers = nn.ModuleList()
+        self.dropout  = dropout
+        self.pool     = pool
+        self.layers   = nn.ModuleList()
 
         if n_layers == 0:
             self.layers.append(nn.Linear(input_dim, hid_dim))
@@ -21,20 +25,22 @@ class GCN(nn.Module):
             for i in range(n_layers):
                 self.layers.append(GCNConv(dims[i], dims[i + 1]))
 
-        self.classifier = nn.Linear(hid_dim if n_layers >= 1 else hid_dim, n_classes)
+        self.classifier = nn.Linear(hid_dim, n_classes)
 
     def _embed(self, x, edge_index):
         if self.n_layers == 0:
             x = F.relu(self.layers[0](x))
-            x = F.dropout(x, p=self.dropout, training=self.training)
-            return x
+            return F.dropout(x, p=self.dropout, training=self.training)
         for conv in self.layers:
             x = F.relu(conv(x, edge_index))
             x = F.dropout(x, p=self.dropout, training=self.training)
         return x
 
-    def forward(self, x, edge_index):
-        return self.classifier(self._embed(x, edge_index))
+    def forward(self, x, edge_index, batch=None):
+        h = self._embed(x, edge_index)
+        if self.pool:
+            h = global_mean_pool(h, batch)
+        return self.classifier(h)
 
     def embed(self, x, edge_index):
         self.eval()
@@ -45,16 +51,17 @@ class GCN(nn.Module):
 class SkipGCN(nn.Module):
     """GCN with residual (skip) connections — adapted from Practical 3.
 
-    Each layer computes: H^(t) = ReLU(GCNConv(H^(t-1))) + proj(H^(t-1))
-    where proj is a linear projection when dimensions change.
+    Each layer: H^(t) = ReLU(GCNConv(H^(t-1))) + proj(H^(t-1))
+    Set pool=True for graph-level classification.
     """
 
     def __init__(self, input_dim: int, hid_dim: int, n_classes: int,
-                 n_layers: int, dropout: float = 0.3):
+                 n_layers: int, dropout: float = 0.3, pool: bool = False):
         super().__init__()
-        self.n_layers = n_layers
-        self.dropout = dropout
-        self.layers = nn.ModuleList()
+        self.n_layers  = n_layers
+        self.dropout   = dropout
+        self.pool      = pool
+        self.layers    = nn.ModuleList()
         self.res_projs = nn.ModuleList()
 
         if n_layers == 0:
@@ -63,7 +70,6 @@ class SkipGCN(nn.Module):
             dims = [input_dim] + [hid_dim] * n_layers
             for i in range(n_layers):
                 self.layers.append(GCNConv(dims[i], dims[i + 1]))
-                # projection for residual when in_dim != out_dim
                 if dims[i] != dims[i + 1]:
                     self.res_projs.append(nn.Linear(dims[i], dims[i + 1], bias=False))
                 else:
@@ -74,16 +80,18 @@ class SkipGCN(nn.Module):
     def _embed(self, x, edge_index):
         if self.n_layers == 0:
             x = F.relu(self.layers[0](x))
-            x = F.dropout(x, p=self.dropout, training=self.training)
-            return x
+            return F.dropout(x, p=self.dropout, training=self.training)
         for conv, proj in zip(self.layers, self.res_projs):
             residual = proj(x)
             x = F.relu(conv(x, edge_index)) + residual
             x = F.dropout(x, p=self.dropout, training=self.training)
         return x
 
-    def forward(self, x, edge_index):
-        return self.classifier(self._embed(x, edge_index))
+    def forward(self, x, edge_index, batch=None):
+        h = self._embed(x, edge_index)
+        if self.pool:
+            h = global_mean_pool(h, batch)
+        return self.classifier(h)
 
     def embed(self, x, edge_index):
         self.eval()
