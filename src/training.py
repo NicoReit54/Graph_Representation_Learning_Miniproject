@@ -16,11 +16,18 @@ def train_model(
     weight_decay: float = 5e-4,
     epochs: int = 300,
     patience: int = 20,
-    device: str = "cpu",
-) -> tuple:
-    """Train a node classification model with early stopping.
+    device: str = "cpu"
+    ) -> tuple:
+    """Train a node-classification model (the SBM / oversmoothing experiments).
 
-    Returns (best_model, train_acc_history, val_acc_history).
+    Standard full-batch loop: forward pass over the whole graph, compute the loss
+    on the train nodes only, backprop, repeat. We watch the validation accuracy
+    and use early stopping - if it hasn't improved for `patience` epochs we stop
+    and roll back to the best weights we saw. That avoids over-training and saves
+    time once the model has converged.
+
+    Returns (best_model, train_acc_history, val_acc_history), histories are returned
+    for plotting.
     """
     model = model.to(device)
     data  = data.to(device)
@@ -59,10 +66,12 @@ def train_model(
 
 
 def evaluate(model, data: Data, mask: torch.BoolTensor, device: str = "cpu") -> float:
+    """Accuracy on whichever node subset the mask selects (e.g. data.test_mask)."""
     return _node_accuracy(model, data, mask, device)
 
 
 def _node_accuracy(model, data, mask, device):
+    """Fraction of masked nodes the model classifies correctly (no grad, eval mode)."""
     model.eval()
     with torch.no_grad():
         out  = model(data.x.to(device), data.edge_index.to(device))
@@ -81,15 +90,29 @@ def train_graph_model(
     epochs: int = 300,
     patience: int = 20,
     batch_size: int = 32,
-    device: str = "cpu",
-) -> tuple:
-    """Train the source-to-target signal propagation model with early stopping.
+    device: str = "cpu"
+    ) -> tuple:
+    """Train the source-to-target signal-propagation model (over-squashing task).
 
-    For each graph in the batch, the model computes node embeddings and predicts
-    the label using ONLY the designated target node (stored in data.target_node).
-    This forces the signal to genuinely cross the bridge rather than being
-    captured by a global pool that includes the source node.
+    This is the mini-batched cousin of train_model, with one important difference in
+    how the loss is computed. We DON'T pool the whole graph - instead we read off
+    the prediction at one specific node per graph: the target node (stored in
+    data.target_node). That's on purpose: the answer is only available at the
+    source node, so to get the target node right the signal genuinely has to
+    travel across the bridge. A global pool would let the model peek at the
+    source directly and "cheat".
 
+    The line to consider is the target index:
+
+        target_idx = batch.ptr[:-1] + batch.target_node.squeeze(-1)
+
+    When PyG batches graphs it concatenates all their nodes into one big tensor.
+    batch.ptr tells us where each graph starts in that tensor, so adding the
+    per-graph target offset gives the global row of each graph's target node.
+
+    Everything else (Adam, early stopping, best-weight rollback) is the same as
+    train_model. 
+    
     Returns (best_model, train_acc_history, val_acc_history).
     """
     model = model.to(device)
@@ -135,11 +158,17 @@ def train_graph_model(
 
 def evaluate_graph_model(model, graphs: list, batch_size: int = 32,
                          device: str = "cpu") -> float:
+    """Target-node accuracy over a list of graphs (e.g. the held-out test set)."""
     loader = DataLoader(graphs, batch_size=batch_size, shuffle=False)
     return _target_accuracy(model, loader, device)
 
 
 def _target_accuracy(model, loader, device):
+    """Fraction of graphs whose target node gets the right label.
+
+    Same target-node indexing trick as in train_graph_model - we only score the
+    one designated readout node per graph, not all nodes.
+    """
     model.eval()
     correct = total = 0
     with torch.no_grad():

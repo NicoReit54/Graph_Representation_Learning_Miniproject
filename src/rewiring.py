@@ -1,10 +1,12 @@
-"""SDRF-style graph rewiring via Ollivier-Ricci curvature.
+"""
+SDRF-style graph rewiring via Ollivier-Ricci curvature.
 
+Funfact:
 GraphRicciCurvature segfaults when torch is also loaded (OpenMP conflict on
 macOS ARM). We work around this by running the curvature computation in a
 subprocess that never imports torch.
 
-Reference: Topping et al. (2022) "Understanding Over-Squashing and Bottlenecks
+General Reference: Topping et al. (2022) "Understanding Over-Squashing and Bottlenecks
 on Graphs via Curvature."
 """
 
@@ -20,7 +22,8 @@ from torch_geometric.utils import to_networkx
 
 
 # ---------------------------------------------------------------------------
-# Subprocess worker — called as a script, never imports torch
+# Subprocess worker - called as a script, never imports torch because of a 
+# "stupid" OpenMP conflict on macOS ARM.
 # ---------------------------------------------------------------------------
 
 _WORKER_SCRIPT = """
@@ -122,7 +125,17 @@ def _data_to_payload(data: Data, task: str, **kwargs) -> dict:
 # ---------------------------------------------------------------------------
 
 def compute_ricci_curvature(data: Data) -> dict:
-    """Return dict (u,v) -> kappa for every edge (both directions)."""
+    """Compute the Ollivier-Ricci curvature κ of every edge in the graph.
+
+    Curvature is our "bottleneck" detector. Intuitively, an edge
+    in a dense, well-connected region (lots of shared neighbours / triangles) has
+    positive curvature, while a solo bridge edge connecting two otherwise-
+    separate clusters has negative curvature. Those negative edges are 
+    the over-squashing bottlenecks we want to detect and work with.
+
+    Returns a dict mapping (u, v) -> κ, with both directions stored so you can
+    look up an edge from either end.
+    """
     payload = _data_to_payload(data, "curvature")
     raw = _call_worker(payload)
     curvatures = {}
@@ -140,7 +153,38 @@ def sdrf_rewire(
     add_edges: bool = True,
     remove_edges: bool = False,
 ) -> Data:
-    """Return a new Data object with SDRF-rewired edges. Features/labels unchanged."""
+    """Rewire a graph with SDRF - add shortcut edges where the bottlenecks are.
+
+    SDRF (Stochastic Discrete Ricci Flow) is the proposed curvature-based fix for
+    over-squashing. It is based on Topping et al. (2022)
+    
+    This is an SDRF-inspired, simplified variant, not a full reproduction:
+
+    - Same idea: each step targets the most negatively curved edge (the worst
+        bottleneck) and adds a new edge in its neighbourhood to lessen the squeeze.
+
+    - Different edge choice: the paper scores every candidate edge by how much it
+        would improve the bottleneck's curvature and samples one via softmax(τ·x)
+        (the "Stochastic" in SDRF). We instead deterministically add the edge between
+        the two lowest-degree candidate nodes - a cheaper version that pushes curvature
+        up in the same direction, but without the curvature-improvement term or any
+        randomness.
+    - `tau` here is NOT the paper's softmax temperature τ. It's a curvature
+        threshold: we only add an edge if the bottleneck's curvature is below `tau`
+        (with tau=0, only genuinely negative edges are touched).
+    - Edge removal (the paper's optional prune step) exists but is off by default.
+
+    The loop is: find the most negatively curved edge (the worst bottleneck),
+    add a new edge near it to lessen the squeeze, and repeat n_iterations times. 
+
+    Args:
+        n_iterations: how many rewiring steps to take (more = more added edges).
+        tau:          curvature threshold - we only act on edges below it.
+        add_edges:    add shortcut edges at bottlenecks (the main SDRF move).
+        remove_edges: optionally also prune very positively curved (redundant) edges.
+
+    Returns a brand-new Data object; the original is left untouched.
+    """
     payload = _data_to_payload(data, "rewire",
                                n_iter=n_iterations, tau=tau,
                                add_edges=add_edges, remove_edges=remove_edges)
@@ -167,10 +211,14 @@ def sdrf_rewire_batch(
     add_edges: bool = True,
     remove_edges: bool = False,
 ) -> list:
-    """Rewire multiple graphs in a single subprocess call.
+    """Same as sdrf_rewire, but rewire a whole list of graphs in one go.
 
-    Pays the GraphRicciCurvature import overhead once instead of once per graph.
-    Returns a list of new Data objects in the same order as data_list.
+    Why this exists: spinning up the subprocess and importing GraphRicciCurvature
+    costs a few seconds *every* call. Doing that once per graph was painfully slow
+    in Exp B.2. So here we ship all the graphs to a single subprocess, pay the
+    import cost once, and rewire them in a loop on the other side.
+
+    Returns a list of new Data objects, in the same order as the input list.
     """
     graphs_payload = []
     for data in data_list:
@@ -205,7 +253,12 @@ def sdrf_rewire_batch(
 
 
 def curvature_stats(data: Data) -> dict:
-    """Return mean/min/max Ollivier-Ricci curvature over all edges."""
+    """Quick summary of a graph's curvature.
+
+    Bundles up mean / min / max curvature plus a count of how many edges are
+    negatively curved (i.e. how many bottlenecks there are). Great for an
+    at-a-glance "before vs after rewiring" comparison.
+    """
     curv = compute_ricci_curvature(data)
     vals = list(curv.values())
     return {
