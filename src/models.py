@@ -94,7 +94,7 @@ class SkipGCN(nn.Module):
 
         H^(t) = ReLU(GCNConv(H^(t-1))) + proj(H^(t-1))
 
-    That  "+ proj(H^(t-1))" is the whole trick. It gives every node a
+    That  "+ proj(H^(t-1))" is the trick. It gives every node a
     direct shortcut to its previous-layer features, so even very deep networks
     can keep nodes a bit more distinguishable instead of smoothing them all together
     right away.
